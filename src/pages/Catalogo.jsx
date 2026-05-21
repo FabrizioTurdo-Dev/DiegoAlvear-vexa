@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { formatPrice, SELLER_PHONE } from "../data/store";
 
+import { supabase } from "../config/supabase"; // Ajustá la ruta según tus carpetas
+
 function WhatsAppIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -222,25 +224,53 @@ function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
 }
 
 export default function Catalogo() {
-  const { products } = useApp();
+  // 1. Traemos la instancia de supabase (asegurate de que la ruta a supabaseClient sea la correcta)
+  // Si no usás una instancia global, podés importar el cliente arriba de todo
+  const { products } = useApp(); 
+  
+  // 2. Creamos un estado local para guardar los productos REALES de Supabase
+  const [realProducts, setRealProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const [catFilter, setCatFilter]   = useState("todos");
   const [sizeFilter, setSizeFilter] = useState(null);
   const [cart, setCart]             = useState([]);
   const [view, setView]             = useState("catalog");
   const [toast, setToast]           = useState(null);
 
+  // 3. Efecto para buscar los productos en la base de datos de verdad
+  useEffect(() => {
+    async function fetchCatalogo() {
+      try {
+        const { data, error } = await supabase
+          .from('productos')
+          .select('*')
+          .order('id', { ascending: true });
+
+        if (error) throw error;
+        setRealProducts(data || []);
+      } catch (err) {
+        console.error("Error cargando catálogo desde Supabase:", err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCatalogo();
+  }, []);
+
+  // 4. Cambiamos tus useMemo para que usen 'realProducts' en vez de 'products' del context
   const allSizes = useMemo(() => {
     const s = new Set();
-    products.filter(p => p.active).forEach(p => Object.keys(p.stock).forEach(t => s.add(Number(t))));
+    realProducts.filter(p => p.active).forEach(p => Object.keys(p.stock).forEach(t => s.add(Number(t))));
     return [...s].sort((a, b) => a - b);
-  }, [products]);
+  }, [realProducts]);
 
-  const filtered = useMemo(() => products.filter(p => {
+  const filtered = useMemo(() => realProducts.filter(p => {
     if (!p.active) return false;
     const catOk  = catFilter === "todos" || p.cat === catFilter;
     const sizeOk = !sizeFilter || (sizeFilter in p.stock && p.stock[sizeFilter] > 0);
     return catOk && sizeOk;
-  }), [products, catFilter, sizeFilter]);
+  }), [realProducts, catFilter, sizeFilter]);
 
   const totalItems = cart.reduce((s, c) => s + c.qty, 0);
 
@@ -286,6 +316,18 @@ export default function Catalogo() {
     fontWeight: active ? 700 : 400,
     transition: "all 0.15s",
   });
+
+  // Pantalla de carga estética opcional
+  if (loading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#666" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 10, animate: "bounce 1s infinite" }}>👟</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Cargando catálogo real...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", background: "#FAFAFA", minHeight: "100vh" }}>
