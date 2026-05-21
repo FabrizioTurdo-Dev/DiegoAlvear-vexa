@@ -1,7 +1,8 @@
 // src/pages/Admin.jsx
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { formatPrice, ALL_SIZES_ADULTO, ALL_SIZES_NINO } from "../data/store";
+import { supabase } from "../config/supabase"; // Importamos la conexión
 
 // ─── UI atómica ────────────────────────────────────────────────────────────
 const STATUS_COLORS = {
@@ -142,7 +143,7 @@ function ProductForm({ product, onSave, onCancel }) {
 
   function handleSubmit() {
     if (!form.name || !form.brand || !form.price) return alert("Completá nombre, marca y precio");
-    onSave({ ...form, id: product?.id || Date.now(), price: Number(form.price) });
+    onSave({ ...form, id: product?.id || null, price: Number(form.price) });
   }
 
   const activeSizes = Object.keys(form.stock).map(Number).sort((a, b) => a - b);
@@ -247,36 +248,109 @@ function ProductForm({ product, onSave, onCancel }) {
   );
 }
 
-// ─── Sección Productos ────────────────────────────────────────────────────
+// ─── Sección Productos (Conectada a Supabase) ──────────────────────────────────
 function ProductsSection() {
   const { products, setProducts } = useApp();
   const [modal, setModal] = useState(null);
 
-  function saveProduct(data) {
-    setProducts(prev => {
-      const exists = prev.find(p => p.id === data.id);
-      return exists ? prev.map(p => p.id === data.id ? data : p) : [...prev, data];
-    });
+  // EFECTO: Cargar los productos desde Supabase al abrir el panel
+  useEffect(() => {
+    async function fetchProducts() {
+      const { data, error } = await supabase
+        .from("productos")
+        .select("*")
+        .order("id", { ascending: false });
+        
+      if (!error && data) {
+        setProducts(data);
+      } else {
+        console.error("Error al traer productos:", error);
+      }
+    }
+    fetchProducts();
+  }, [setProducts]);
+
+  // FUNCIÓN: Crear o Actualizar Producto en Supabase
+  async function saveProduct(formData) {
+    if (formData.id) {
+      // Caso EDITAR: Actualizar en Supabase
+      const { data, error } = await supabase
+        .from("productos")
+        .update({
+          name: formData.name,
+          brand: formData.brand,
+          cat: formData.cat,
+          price: formData.price,
+          tag: formData.tag,
+          active: formData.active,
+          emoji: formData.emoji,
+          stock: formData.stock,
+          image: formData.image
+        })
+        .eq("id", formData.id)
+        .select();
+
+      if (error) return alert(`Error al actualizar: ${error.message}`);
+      
+      setProducts(prev => prev.map(p => p.id === formData.id ? data[0] : p));
+    } else {
+      // Caso NUEVO: Insertar en Supabase (Omitimos la ID para que la autogenere serial)
+      const { data, error } = await supabase
+        .from("productos")
+        .insert([{
+          name: formData.name,
+          brand: formData.brand,
+          cat: formData.cat,
+          price: formData.price,
+          tag: formData.tag,
+          active: formData.active,
+          emoji: formData.emoji,
+          stock: formData.stock,
+          image: formData.image
+        }])
+        .select();
+
+      if (error) return alert(`Error al guardar: ${error.message}`);
+      
+      setProducts(prev => [data[0], ...prev]);
+    }
     setModal(null);
   }
 
-  function deleteProduct(id) {
-    if (window.confirm("¿Eliminar este producto?")) setProducts(prev => prev.filter(p => p.id !== id));
+  // FUNCIÓN: Eliminar Producto de Supabase
+  async function deleteProduct(id) {
+    if (window.confirm("¿Eliminar este producto permanentemente de Supabase?")) {
+      const { error } = await supabase
+        .from("productos")
+        .delete()
+        .eq("id", id);
+
+      if (error) return alert(`Error al eliminar: ${error.message}`);
+      setProducts(prev => prev.filter(p => p.id !== id));
+    }
   }
 
-  function toggleActive(id) {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, active: !p.active } : p));
+  // FUNCIÓN: Alternar visibilidad (Activo/Oculto) en Supabase
+  async function toggleActive(product) {
+    const nextActiveState = !product.active;
+    const { error } = await supabase
+      .from("productos")
+      .update({ active: nextActiveState })
+      .eq("id", product.id);
+
+    if (error) return alert(`Error al cambiar estado: ${error.message}`);
+    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, active: nextActiveState } : p));
   }
 
-  const sizes = (p) => Object.keys(p.stock).map(Number).sort((a, b) => a - b);
-  const totalStock = (p) => Object.values(p.stock).reduce((s, v) => s + v, 0);
+  const sizes = (p) => Object.keys(p.stock || {}).map(Number).sort((a, b) => a - b);
+  const totalStock = (p) => Object.values(p.stock || {}).reduce((s, v) => s + v, 0);
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800 }}>Productos</div>
-          <div style={{ fontSize: 12, color: "#999" }}>{products.length} cargados</div>
+          <div style={{ fontSize: 12, color: "#999" }}>{products.length} cargados en base de datos</div>
         </div>
         <Btn onClick={() => setModal("new")}>+ Nuevo producto</Btn>
       </div>
@@ -286,7 +360,7 @@ function ProductsSection() {
         {[
           { label: "Total", val: products.length, icon: "📦" },
           { label: "Activos", val: products.filter(p => p.active).length, icon: "✅" },
-          { label: "Talles sin stock", val: products.reduce((s, p) => s + Object.values(p.stock).filter(v => v === 0).length, 0), icon: "⚠️" },
+          { label: "Talles sin stock", val: products.reduce((s, p) => s + Object.values(p.stock || {}).filter(v => v === 0).length, 0), icon: "⚠️" },
           { label: "Adult / Niño", val: `${products.filter(p => p.cat === "adulto").length} / ${products.filter(p => p.cat === "nino").length}`, icon: "👥" },
         ].map(s => (
           <div key={s.label} style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 12, padding: "14px 16px" }}>
@@ -337,7 +411,7 @@ function ProductsSection() {
                   <div style={{ fontSize: 10, color: "#AAA", marginTop: 2 }}>{totalStock(p)} pares totales</div>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
-                  <button onClick={() => toggleActive(p.id)} style={{
+                  <button onClick={() => toggleActive(p)} style={{
                     fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, cursor: "pointer",
                     border: `1px solid ${p.active ? "#6DCCA0" : "#E8E8E8"}`,
                     background: p.active ? "#E8F8EF" : "#F8F8F8",
