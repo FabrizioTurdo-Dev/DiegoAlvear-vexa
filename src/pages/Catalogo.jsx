@@ -1,5 +1,5 @@
 // src/pages/Catalogo.jsx
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { formatPrice, SELLER_PHONE } from "../data/store";
 
