@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { formatPrice, ALL_SIZES_ADULTO, ALL_SIZES_NINO } from "../data/store";
-import { supabase } from "../config/supabase"; // Importamos la conexión
+import { supabase } from "../config/supabase";
 
 // ─── UI atómica ────────────────────────────────────────────────────────────
 const STATUS_COLORS = {
@@ -248,98 +248,64 @@ function ProductForm({ product, onSave, onCancel }) {
   );
 }
 
-// ─── Sección Productos (Conectada a Supabase) ──────────────────────────────────
+// ─── Sección Productos (Conectada a Supabase) ──────────────────────────────
 function ProductsSection() {
   const { products, setProducts } = useApp();
   const [modal, setModal] = useState(null);
 
-  // EFECTO: Cargar los productos desde Supabase al abrir el panel
   useEffect(() => {
     async function fetchProducts() {
       const { data, error } = await supabase
         .from("productos")
         .select("*")
         .order("id", { ascending: false });
-        
-      if (!error && data) {
-        setProducts(data);
-      } else {
-        console.error("Error al traer productos:", error);
-      }
+      if (!error && data) setProducts(data);
+      else console.error("Error al traer productos:", error);
     }
     fetchProducts();
   }, [setProducts]);
 
-  // FUNCIÓN: Crear o Actualizar Producto en Supabase
   async function saveProduct(formData) {
     if (formData.id) {
-      // Caso EDITAR: Actualizar en Supabase
       const { data, error } = await supabase
         .from("productos")
         .update({
-          name: formData.name,
-          brand: formData.brand,
-          cat: formData.cat,
-          price: formData.price,
-          tag: formData.tag,
-          active: formData.active,
-          emoji: formData.emoji,
-          stock: formData.stock,
-          image: formData.image
+          name: formData.name, brand: formData.brand, cat: formData.cat,
+          price: formData.price, tag: formData.tag, active: formData.active,
+          emoji: formData.emoji, stock: formData.stock, image: formData.image,
         })
         .eq("id", formData.id)
         .select();
-
       if (error) return alert(`Error al actualizar: ${error.message}`);
-      
       setProducts(prev => prev.map(p => p.id === formData.id ? data[0] : p));
     } else {
-      // Caso NUEVO: Insertar en Supabase (Omitimos la ID para que la autogenere serial)
       const { data, error } = await supabase
         .from("productos")
         .insert([{
-          name: formData.name,
-          brand: formData.brand,
-          cat: formData.cat,
-          price: formData.price,
-          tag: formData.tag,
-          active: formData.active,
-          emoji: formData.emoji,
-          stock: formData.stock,
-          image: formData.image
+          name: formData.name, brand: formData.brand, cat: formData.cat,
+          price: formData.price, tag: formData.tag, active: formData.active,
+          emoji: formData.emoji, stock: formData.stock, image: formData.image,
         }])
         .select();
-
       if (error) return alert(`Error al guardar: ${error.message}`);
-      
       setProducts(prev => [data[0], ...prev]);
     }
     setModal(null);
   }
 
-  // FUNCIÓN: Eliminar Producto de Supabase
   async function deleteProduct(id) {
-    if (window.confirm("¿Eliminar este producto permanentemente de Supabase?")) {
-      const { error } = await supabase
-        .from("productos")
-        .delete()
-        .eq("id", id);
-
+    if (window.confirm("¿Eliminar este producto permanentemente?")) {
+      const { error } = await supabase.from("productos").delete().eq("id", id);
       if (error) return alert(`Error al eliminar: ${error.message}`);
       setProducts(prev => prev.filter(p => p.id !== id));
     }
   }
 
-  // FUNCIÓN: Alternar visibilidad (Activo/Oculto) en Supabase
   async function toggleActive(product) {
-    const nextActiveState = !product.active;
-    const { error } = await supabase
-      .from("productos")
-      .update({ active: nextActiveState })
-      .eq("id", product.id);
-
+    const next = !product.active;
+    const { error } = await supabase.from("productos").update({ active: next }).eq("id", product.id);
     if (error) return alert(`Error al cambiar estado: ${error.message}`);
-    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, active: nextActiveState } : p));
+    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, active: next } : p));
   }
 
   const sizes = (p) => Object.keys(p.stock || {}).map(Number).sort((a, b) => a - b);
@@ -355,7 +321,6 @@ function ProductsSection() {
         <Btn onClick={() => setModal("new")}>+ Nuevo producto</Btn>
       </div>
 
-      {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 20 }}>
         {[
           { label: "Total", val: products.length, icon: "📦" },
@@ -371,63 +336,69 @@ function ProductsSection() {
         ))}
       </div>
 
-      {/* Tabla */}
       <div style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 14, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "#FAFAFA" }}>
-              {["Producto", "Categoría", "Precio", "Talles / Stock", "Estado", ""].map(h => (
-                <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.05em", borderBottom: "1px solid #F0F0F0" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p, i) => (
-              <tr key={p.id} style={{ borderBottom: i < products.length - 1 ? "1px solid #F8F8F8" : "none" }}>
-                <td style={{ padding: "12px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, overflow: "hidden", background: "#F8F8F8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-                      {p.image ? <img src={p.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : p.emoji}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name}</div>
-                      <div style={{ fontSize: 11, color: "#999" }}>{p.brand}</div>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: "12px 16px", fontSize: 12, color: "#666" }}>{p.cat === "adulto" ? "👟 Adulto" : "🧒 Niño"}</td>
-                <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 700 }}>{formatPrice(p.price)}</td>
-                <td style={{ padding: "12px 16px" }}>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {sizes(p).map(s => (
-                      <span key={s} style={{
-                        fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 700,
-                        background: p.stock[s] === 0 ? "#FEF0F0" : "#E8F8EF",
-                        color: p.stock[s] === 0 ? "#A32D2D" : "#0F6E56",
-                        border: `1px solid ${p.stock[s] === 0 ? "#F09595" : "#6DCCA0"}`,
-                      }}>{s}: {p.stock[s]}</span>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 10, color: "#AAA", marginTop: 2 }}>{totalStock(p)} pares totales</div>
-                </td>
-                <td style={{ padding: "12px 16px" }}>
-                  <button onClick={() => toggleActive(p)} style={{
-                    fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, cursor: "pointer",
-                    border: `1px solid ${p.active ? "#6DCCA0" : "#E8E8E8"}`,
-                    background: p.active ? "#E8F8EF" : "#F8F8F8",
-                    color: p.active ? "#0F6E56" : "#AAA",
-                  }}>{p.active ? "● Activo" : "○ Oculto"}</button>
-                </td>
-                <td style={{ padding: "12px 16px" }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <Btn small variant="ghost" onClick={() => setModal(p)}>Editar</Btn>
-                    <Btn small variant="danger" onClick={() => deleteProduct(p.id)}>🗑</Btn>
-                  </div>
-                </td>
+        {products.length === 0 ? (
+          <div style={{ padding: "3rem", textAlign: "center", color: "#AAA" }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
+            <div style={{ fontSize: 14 }}>No hay productos aún. ¡Creá el primero!</div>
+          </div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#FAFAFA" }}>
+                {["Producto", "Categoría", "Precio", "Talles / Stock", "Estado", ""].map(h => (
+                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.05em", borderBottom: "1px solid #F0F0F0" }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {products.map((p, i) => (
+                <tr key={p.id} style={{ borderBottom: i < products.length - 1 ? "1px solid #F8F8F8" : "none" }}>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 8, overflow: "hidden", background: "#F8F8F8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                        {p.image ? <img src={p.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : p.emoji}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: "#999" }}>{p.brand}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: "12px 16px", fontSize: 12, color: "#666" }}>{p.cat === "adulto" ? "👟 Adulto" : "🧒 Niño"}</td>
+                  <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 700 }}>{formatPrice(p.price)}</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {sizes(p).map(s => (
+                        <span key={s} style={{
+                          fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 700,
+                          background: p.stock[s] === 0 ? "#FEF0F0" : "#E8F8EF",
+                          color: p.stock[s] === 0 ? "#A32D2D" : "#0F6E56",
+                          border: `1px solid ${p.stock[s] === 0 ? "#F09595" : "#6DCCA0"}`,
+                        }}>{s}: {p.stock[s]}</span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#AAA", marginTop: 2 }}>{totalStock(p)} pares totales</div>
+                  </td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <button onClick={() => toggleActive(p)} style={{
+                      fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, cursor: "pointer",
+                      border: `1px solid ${p.active ? "#6DCCA0" : "#E8E8E8"}`,
+                      background: p.active ? "#E8F8EF" : "#F8F8F8",
+                      color: p.active ? "#0F6E56" : "#AAA",
+                    }}>{p.active ? "● Activo" : "○ Oculto"}</button>
+                  </td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Btn small variant="ghost" onClick={() => setModal(p)}>Editar</Btn>
+                      <Btn small variant="danger" onClick={() => deleteProduct(p.id)}>🗑</Btn>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {modal && (
@@ -457,9 +428,9 @@ function OrdersSection() {
 
   const counts = {
     todos: orders.length,
-    pendiente: orders.filter(o => o.status === "pendiente").length,
+    pendiente:  orders.filter(o => o.status === "pendiente").length,
     confirmado: orders.filter(o => o.status === "confirmado").length,
-    enviado: orders.filter(o => o.status === "enviado").length,
+    enviado:    orders.filter(o => o.status === "enviado").length,
   };
   const filtered = filter === "todos" ? orders : orders.filter(o => o.status === filter);
 
@@ -467,7 +438,7 @@ function OrdersSection() {
     <div>
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 18, fontWeight: 800 }}>Pedidos</div>
-        <div style={{ fontSize: 12, color: "#999" }}>{orders.length} pedidos en total</div>
+        <div style={{ fontSize: 12, color: "#999" }}>{orders.length} pedidos en total · Los pedidos se guardan en memoria por sesión</div>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
@@ -483,7 +454,11 @@ function OrdersSection() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filtered.length === 0 && (
-          <div style={{ textAlign: "center", padding: "3rem", color: "#AAA", fontSize: 14 }}>No hay pedidos en esta categoría</div>
+          <div style={{ textAlign: "center", padding: "3rem", color: "#AAA", fontSize: 14 }}>
+            {orders.length === 0
+              ? "Los pedidos aparecerán acá cuando los clientes completen su compra"
+              : "No hay pedidos en esta categoría"}
+          </div>
         )}
         {filtered.map(order => (
           <div key={order.id} style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 14, padding: "16px 18px" }}>
@@ -524,11 +499,19 @@ function OrdersSection() {
 // ─── Sección Configuración ────────────────────────────────────────────────
 function SettingsSection() {
   const [cfg, setCfg] = useState({
-    shopName: "Calzado Mayorista", phone: "5491100000000",
+    shopName: "Calzado Mayorista", phone: "5491155667788",
     minOrder: 3, currency: "ARS",
     welcomeMsg: "Hola! Gracias por elegirnos. Revisá nuestro catálogo mayorista 👟",
   });
+  const [saved, setSaved] = useState(false);
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
+
+  function handleSave() {
+    // En el MVP esto solo muestra confirmación visual.
+    // Para persistir: guardarlo en Supabase o localStorage.
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
 
   return (
     <div>
@@ -538,13 +521,16 @@ function SettingsSection() {
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14 }}>🏪 Datos del negocio</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Input label="Nombre" value={cfg.shopName} onChange={e => set("shopName", e.target.value)} />
-            <Input label="Teléfono WhatsApp" value={cfg.phone} onChange={e => set("phone", e.target.value)} />
+            <Input label="Teléfono WhatsApp" value={cfg.phone} onChange={e => set("phone", e.target.value)} placeholder="5491155667788" />
             <Input label="Pedido mínimo (pares)" type="number" value={cfg.minOrder} onChange={e => set("minOrder", e.target.value)} />
             <Select label="Moneda" value={cfg.currency} onChange={e => set("currency", e.target.value)}>
               <option value="ARS">ARS – Peso argentino</option>
               <option value="USD">USD – Dólar</option>
               <option value="BRL">BRL – Real</option>
             </Select>
+          </div>
+          <div style={{ marginTop: 12, padding: "10px 14px", background: "#FFFBEA", borderRadius: 8, fontSize: 12, color: "#B07D00", border: "1px solid #FADA79" }}>
+            ⚠️ Para que el teléfono de WhatsApp cambie en el catálogo, editá también <code>SELLER_PHONE</code> en <code>src/data/store.js</code>
           </div>
         </div>
         <div style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 14, padding: 20 }}>
@@ -560,8 +546,9 @@ function SettingsSection() {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Btn onClick={() => alert("Configuración guardada ✓")}>Guardar cambios</Btn>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12 }}>
+          {saved && <span style={{ fontSize: 13, color: "#0F6E56", fontWeight: 600 }}>✓ Guardado</span>}
+          <Btn onClick={handleSave}>Guardar cambios</Btn>
         </div>
       </div>
     </div>
@@ -610,7 +597,8 @@ function AdminApp() {
             </button>
           ))}
         </nav>
-        <a href="/" style={{
+        {/* FIX: HashRouter usa /#/ para navegar */}
+        <a href="/#/" style={{
           display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
           borderRadius: 8, color: "#AAA", fontSize: 12, textDecoration: "none",
         }}>🌐 Ver catálogo</a>
@@ -627,13 +615,18 @@ function AdminApp() {
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────
+// ⚠️  ANTES DE LANZAR: cambiá las credenciales hardcodeadas aquí
+//     o mejor: implementá autenticación real con Supabase Auth
+const ADMIN_USER = "admin";
+const ADMIN_PASS = "calzado2025"; // ← cambiá esto
+
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [form, setForm] = useState({ user: "", pass: "" });
   const [error, setError] = useState(false);
 
   function handleLogin() {
-    if (form.user === "admin" && form.pass === "1234") {
+    if (form.user === ADMIN_USER && form.pass === ADMIN_PASS) {
       setLoggedIn(true);
     } else {
       setError(true);
@@ -653,7 +646,7 @@ export default function Admin() {
           <div style={{ fontSize: 12, color: "#AAA" }}>Calzado Mayorista</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Input label="Usuario" value={form.user} onChange={e => setForm(f => ({ ...f, user: e.target.value }))} placeholder="admin" />
+          <Input label="Usuario" value={form.user} onChange={e => setForm(f => ({ ...f, user: e.target.value }))} placeholder="Usuario" />
           <Input label="Contraseña" type="password" value={form.pass}
             onChange={e => setForm(f => ({ ...f, pass: e.target.value }))}
             onKeyDown={e => e.key === "Enter" && handleLogin()}
@@ -661,7 +654,6 @@ export default function Admin() {
           />
           {error && <div style={{ fontSize: 12, color: "#A32D2D", textAlign: "center" }}>Usuario o contraseña incorrectos</div>}
           <Btn style={{ width: "100%", justifyContent: "center", marginTop: 4 }} onClick={handleLogin}>Ingresar →</Btn>
-          <div style={{ fontSize: 11, color: "#CCC", textAlign: "center" }}>Demo: admin / 1234</div>
         </div>
       </div>
     </div>
