@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { formatPrice, SELLER_PHONE, LINEAS, TIPOS } from "../data/store";
-import { ordersService } from "../services/ordersService";
+import "../styles/catalogo.css";
 
 function WhatsAppIcon({ size = 20 }) {
   return (
@@ -19,7 +19,7 @@ const LINEA_COLORS = {
   'Extra Acida Intense': { bg: '#FFF0F0', accent: '#D94A4A', text: '#8A2C2C' },
 };
 
-function ProductCard({ product, precioVisible, onAdd }) {
+function ProductCard({ product, precioVisible, onAdd, expanded, onToggleExpand }) {
   const [qty, setQty] = useState(1);
   const price = product[precioVisible] || product.precio_reventa || 0;
   const colors = LINEA_COLORS[product.linea] || LINEA_COLORS['Neutro Balance'];
@@ -27,85 +27,85 @@ function ProductCard({ product, precioVisible, onAdd }) {
 
   if (isIncluded) return null;
 
+  const beneficios = product.beneficios ? product.beneficios.split(' - ') : [];
+  const indicaciones = product.indicaciones ? product.indicaciones.split(' - ') : [];
+
   return (
-    <div style={{
-      background: "#fff", borderRadius: 16, border: "1px solid #F0F0F0",
-      overflow: "hidden", display: "flex", flexDirection: "column",
-      transition: "box-shadow 0.2s, transform 0.2s",
-    }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 24px rgba(0,0,0,0.09)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "none"; }}
+    <div
+      className={`product-card ${expanded ? 'expanded' : ''}`}
+      style={expanded ? { borderColor: colors.accent, borderWidth: 2 } : {}}
+      onClick={onToggleExpand}
     >
-      <div style={{
-        background: colors.bg, height: 160,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        position: "relative", overflow: "hidden",
-      }}>
-        <span style={{
-          position: "absolute", top: 10, left: 10,
-          background: colors.accent, color: "#fff",
-          fontSize: 10, fontWeight: 700, padding: "3px 8px",
-          borderRadius: 20, letterSpacing: "0.05em",
-        }}>{product.linea}</span>
+      <div className="product-card-image" style={{ background: colors.bg }}>
+        <span className="product-card-linea-badge" style={{ background: colors.accent }}>
+          {product.linea}
+        </span>
+        <span className={`product-card-expand-icon ${expanded ? 'rotated' : ''}`}>▾</span>
         {product.image_url ? (
-          <img src={product.image_url} alt={product.producto}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <img src={product.image_url} alt={product.producto} />
         ) : (
-          <div style={{ textAlign: "center", padding: 16 }}>
-            <div style={{ fontSize: 40, marginBottom: 4 }}>
+          <div className="product-card-emoji">
+            <div className="product-card-emoji-icon">
               {product.tipo === 'Shampoo' ? '🧴' : product.tipo === 'Máscara' ? '💆' : '💧'}
             </div>
-            <div style={{ fontSize: 11, color: colors.text, fontWeight: 600 }}>{product.tipo}</div>
+            <div className="product-card-emoji-label" style={{ color: colors.text }}>{product.tipo}</div>
           </div>
         )}
       </div>
 
-      <div style={{ padding: "12px 14px", flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div className="product-card-body">
         <div>
-          <div style={{ fontSize: 10, color: "#AAA", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            {product.tipo} · pH {product.ph}
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a1a" }}>{product.producto}</div>
-          <div style={{ fontSize: 11, color: "#999" }}>{product.tamanio}</div>
+          <div className="product-card-tipo">{product.tipo} · pH {product.ph}</div>
+          <div className="product-card-name">{product.producto}</div>
+          <div className="product-card-size">{product.tamanio}</div>
         </div>
 
         {product.beneficios && (
-          <div style={{ fontSize: 11, color: "#666", lineHeight: 1.4 }}>
-            {product.beneficios.split(' - ').slice(0, 3).map((b, i) => (
-              <span key={i} style={{
-                display: "inline-block", background: "#F8F8F8", padding: "2px 6px",
-                borderRadius: 4, margin: "1px 2px", fontSize: 10,
-              }}>{b}</span>
+          <div className="product-card-benefits">
+            {beneficios.slice(0, expanded ? beneficios.length : 3).map((b, i) => (
+              <span key={i} className="benefit-tag">{b}</span>
             ))}
           </div>
         )}
 
-        <div style={{ fontSize: 18, fontWeight: 800, color: "#1a1a1a", marginTop: "auto" }}>
-          {formatPrice(price)}
-        </div>
-
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", border: "1px solid #E8E8E8", borderRadius: 8, overflow: "hidden" }}>
-            <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{
-              width: 28, height: 28, border: "none", background: "transparent",
-              cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#666",
-            }}>−</button>
-            <span style={{ width: 28, textAlign: "center", fontSize: 12, fontWeight: 700 }}>{qty}</span>
-            <button onClick={() => setQty(q => q + 1)} style={{
-              width: 28, height: 28, border: "none", background: "transparent",
-              cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#666",
-            }}>+</button>
+        {expanded && (
+          <div className="product-card-detail" onClick={e => e.stopPropagation()}>
+            {product.descripcion && !product.descripcion.includes('Incluido') && (
+              <div>
+                <div className="detail-section-label" style={{ color: colors.accent }}>Descripción</div>
+                <div className="detail-description">{product.descripcion}</div>
+              </div>
+            )}
+            {beneficios.length > 0 && (
+              <div>
+                <div className="detail-section-label" style={{ color: colors.accent }}>Beneficios</div>
+                <div className="detail-benefits">
+                  {beneficios.map((b, i) => (
+                    <span key={i} className="detail-benefit-tag" style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.accent}30` }}>
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {indicaciones.length > 0 && (
+              <div>
+                <div className="detail-section-label" style={{ color: colors.accent }}>Indicaciones</div>
+                <div className="detail-indications">{indicaciones.join(' · ')}</div>
+              </div>
+            )}
           </div>
-          <button
-            onClick={() => { onAdd(product, qty); setQty(1); }}
-            style={{
-              flex: 1, padding: "7px", borderRadius: 8, border: "1.5px solid #1a1a1a",
-              background: "#1a1a1a", color: "#fff", fontSize: 12, fontWeight: 700,
-              cursor: "pointer", transition: "all 0.15s",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = "#333"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "#1a1a1a"; }}
-          >+ Agregar</button>
+        )}
+
+        <div className="product-card-price">{formatPrice(price)}</div>
+
+        <div className="product-card-actions" onClick={e => e.stopPropagation()}>
+          <div className="qty-control">
+            <button className="qty-btn" onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
+            <span className="qty-value">{qty}</span>
+            <button className="qty-btn" onClick={() => setQty(q => q + 1)}>+</button>
+          </div>
+          <button className="add-btn" onClick={() => { onAdd(product, qty); setQty(1); }}>+ Agregar</button>
         </div>
       </div>
     </div>
@@ -152,104 +152,76 @@ function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
   }
 
   if (sent) return (
-    <div style={{ padding: "3rem", textAlign: "center" }}>
-      <div style={{ fontSize: 52, marginBottom: 12 }}>✨</div>
-      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>¡Pedido enviado!</div>
-      <div style={{ fontSize: 14, color: "#666", marginBottom: 24 }}>Se abrió WhatsApp con tu pedido. El vendedor te confirmará en breve.</div>
-      <button onClick={onClose} style={{
-        padding: "10px 28px", borderRadius: 10, border: "1.5px solid #1a1a1a",
-        background: "#1a1a1a", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer",
-      }}>Volver al catálogo</button>
+    <div className="cart-sent">
+      <div className="cart-sent-icon">✨</div>
+      <div className="cart-sent-title">¡Pedido enviado!</div>
+      <div className="cart-sent-msg">Se abrió WhatsApp con tu pedido. El vendedor te confirmará en breve.</div>
+      <button className="cart-sent-btn" onClick={onClose}>Volver al catálogo</button>
     </div>
   );
 
   return (
-    <div style={{ padding: "1rem 0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <button onClick={onClose} style={{
-          background: "none", border: "1px solid #E8E8E8", borderRadius: 8,
-          padding: "6px 12px", cursor: "pointer", fontSize: 13, color: "#666",
-        }}>← Volver</button>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>
-          Tu pedido <span style={{ color: "#999", fontWeight: 400, fontSize: 13 }}>({totalQty} {totalQty === 1 ? "producto" : "productos"})</span>
+    <div className="cart-view">
+      <div className="cart-header">
+        <button className="cart-back-btn" onClick={onClose}>← Volver</button>
+        <div className="cart-title">
+          Tu pedido <span className="cart-title-count">({totalQty} {totalQty === 1 ? "producto" : "productos"})</span>
         </div>
       </div>
 
       {cart.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "3rem 0", color: "#AAA" }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🛒</div>
-          <div style={{ fontSize: 14 }}>El carrito está vacío</div>
+        <div className="cart-empty">
+          <div className="cart-empty-icon">🛒</div>
+          <div className="cart-empty-text">El carrito está vacío</div>
         </div>
       ) : (
         <>
-          <div style={{ border: "1px solid #F0F0F0", borderRadius: 14, overflow: "hidden", marginBottom: 16 }}>
+          <div className="cart-items">
             {cart.map((item, i) => (
-              <div key={`${item.id}-${i}`} style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                borderBottom: i < cart.length - 1 ? "1px solid #F8F8F8" : "none", background: "#fff",
-              }}>
-                <div style={{ fontSize: 26, minWidth: 36 }}>
+              <div key={`${item.id}-${i}`} className="cart-item">
+                <div className="cart-item-emoji">
                   {item.tipo === 'Shampoo' ? '🧴' : item.tipo === 'Máscara' ? '💆' : '💧'}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{item.name}</div>
-                  <div style={{ fontSize: 11, color: "#999" }}>{item.tipo} · {item.tamanio} · {formatPrice(item.price)} c/u</div>
+                <div className="cart-item-info">
+                  <div className="cart-item-name">{item.name}</div>
+                  <div className="cart-item-detail">{item.tipo} · {item.tamanio} · {formatPrice(item.price)} c/u</div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div className="cart-item-qty">
                   {[-1, 1].map(d => (
-                    <button key={d} onClick={() => onChangeQty(item, d)} style={{
-                      width: 26, height: 26, borderRadius: 6, border: "1px solid #E8E8E8",
-                      background: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>{d === -1 ? "−" : "+"}</button>
+                    <button key={d} className="cart-qty-btn" onClick={() => onChangeQty(item, d)}>
+                      {d === -1 ? "−" : "+"}
+                    </button>
                   ))}
-                  <span style={{ fontSize: 13, fontWeight: 700, minWidth: 20, textAlign: "center" }}>{item.qty}</span>
+                  <span className="cart-qty-value">{item.qty}</span>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 700, minWidth: 80, textAlign: "right" }}>{formatPrice(item.price * item.qty)}</div>
-                <button onClick={() => onRemove(item)} style={{ background: "none", border: "none", cursor: "pointer", color: "#CCC", fontSize: 18, lineHeight: 1 }}>✕</button>
+                <div className="cart-item-price">{formatPrice(item.price * item.qty)}</div>
+                <button className="cart-item-remove" onClick={() => onRemove(item)}>✕</button>
               </div>
             ))}
           </div>
 
-          <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            padding: "14px 18px", background: "#F8F8F8", borderRadius: 12, marginBottom: 20,
-          }}>
-            <span style={{ fontSize: 14, color: "#666" }}>Total estimado</span>
-            <span style={{ fontSize: 22, fontWeight: 800 }}>{formatPrice(total)}</span>
+          <div className="cart-total">
+            <span className="cart-total-label">Total estimado</span>
+            <span className="cart-total-value">{formatPrice(total)}</span>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+          <div className="cart-form">
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#999", marginBottom: 4, letterSpacing: "0.05em", textTransform: "uppercase" }}>Tu nombre</div>
-              <input type="text" placeholder="Nombre" value={name}
-                onChange={e => setName(e.target.value)}
-                style={{
-                  width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box",
-                  border: "1.5px solid #E8E8E8", fontSize: 14, outline: "none",
-                }} />
+              <div className="cart-form-label">Tu nombre</div>
+              <input className="cart-form-input" type="text" placeholder="Nombre" value={name}
+                onChange={e => setName(e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#999", marginBottom: 4, letterSpacing: "0.05em", textTransform: "uppercase" }}>Tu número de WhatsApp (opcional)</div>
-              <input type="tel" placeholder="+54 9 11 1234 5678" value={phone}
-                onChange={e => setPhone(e.target.value)}
-                style={{
-                  width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box",
-                  border: "1.5px solid #E8E8E8", fontSize: 14, outline: "none",
-                }} />
+              <div className="cart-form-label">Tu número de WhatsApp (opcional)</div>
+              <input className="cart-form-input" type="tel" placeholder="+54 9 11 1234 5678" value={phone}
+                onChange={e => setPhone(e.target.value)} />
             </div>
           </div>
 
-          <button onClick={sendToWhatsApp} style={{
-            width: "100%", padding: "14px", borderRadius: 12, border: "none",
-            background: "#25D366", color: "#fff", fontSize: 15, fontWeight: 700,
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-          }}>
+          <button className="cart-send-btn" onClick={sendToWhatsApp}>
             <WhatsAppIcon size={20} /> Enviar pedido por WhatsApp
           </button>
-          <div style={{ textAlign: "center", fontSize: 11, color: "#AAA", marginTop: 8 }}>
-            Se abrirá WhatsApp con el resumen de tu pedido
-          </div>
+          <div className="cart-send-hint">Se abrirá WhatsApp con el resumen de tu pedido</div>
         </>
       )}
     </div>
@@ -264,6 +236,7 @@ export default function Catalogo() {
   const [cart, setCart] = useState([]);
   const [view, setView] = useState("catalog");
   const [toast, setToast] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
 
   const precioVisible = config?.precio_visible || "precio_reventa";
 
@@ -309,22 +282,12 @@ export default function Catalogo() {
     setTimeout(() => setToast(null), 2000);
   }
 
-  const pill = (active) => ({
-    padding: "6px 16px", borderRadius: 20, fontSize: 13, cursor: "pointer",
-    border: active ? "1.5px solid #1a1a1a" : "1px solid #E8E8E8",
-    background: active ? "#1a1a1a" : "#fff",
-    color: active ? "#fff" : "#666",
-    fontWeight: active ? 700 : 400,
-    transition: "all 0.15s",
-    whiteSpace: "nowrap",
-  });
-
   if (loading) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#666" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>✨</div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Cargando catálogo Vexa...</div>
+      <div className="catalogo-loading">
+        <div className="catalogo-loading-inner">
+          <div className="catalogo-loading-icon">✨</div>
+          <div className="catalogo-loading-text">Cargando catálogo Vexa...</div>
         </div>
       </div>
     );
@@ -332,100 +295,82 @@ export default function Catalogo() {
 
   if (loadError) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-        <div style={{ textAlign: "center", padding: 40, maxWidth: 400 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
-          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: "#A32D2D" }}>Error al cargar</div>
-          <div style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>{loadError}</div>
-          <button onClick={loadData} style={{
-            padding: "10px 24px", borderRadius: 10, border: "1.5px solid #1a1a1a",
-            background: "#1a1a1a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
-          }}>Reintentar</button>
+      <div className="catalogo-error">
+        <div className="catalogo-error-inner">
+          <div className="catalogo-error-icon">⚠️</div>
+          <div className="catalogo-error-title">Error al cargar</div>
+          <div className="catalogo-error-msg">{loadError}</div>
+          <button className="retry-btn" onClick={loadData}>Reintentar</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", background: "#FAFAFA", minHeight: "100vh" }}>
-      <div style={{
-        background: "#fff", borderBottom: "1px solid #F0F0F0",
-        position: "sticky", top: 0, zIndex: 100,
-      }}>
-        <div style={{
-          maxWidth: 960, margin: "0 auto", padding: "0 20px",
-          height: 58, display: "flex", alignItems: "center", justifyContent: "space-between",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, background: "#1a1a1a",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff", fontSize: 14, fontWeight: 800, letterSpacing: "-0.03em",
-            }}>V</div>
+    <div className="catalogo">
+      <div className="catalogo-header">
+        <div className="catalogo-header-inner">
+          <div className="catalogo-brand">
+            <div className="catalogo-logo">V</div>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em" }}>Vexa</div>
-              <div style={{ fontSize: 10, color: "#AAA", letterSpacing: "0.1em" }}>CATÁLOGO MAYORISTA</div>
+              <div className="catalogo-brand-name">Vexa</div>
+              <div className="catalogo-brand-sub">CATÁLOGO MAYORISTA</div>
             </div>
           </div>
           <button
+            className={`catalogo-cart-btn ${totalItems > 0 ? 'has-items' : ''}`}
             onClick={() => setView(view === "cart" ? "catalog" : "cart")}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 18px", borderRadius: 20, cursor: "pointer",
-              border: totalItems > 0 ? "1.5px solid #1a1a1a" : "1px solid #E8E8E8",
-              background: totalItems > 0 ? "#1a1a1a" : "#fff",
-              color: totalItems > 0 ? "#fff" : "#666",
-              fontSize: 13, fontWeight: 700, transition: "all 0.2s",
-            }}
           >
             🛒 {totalItems > 0 ? `${totalItems} item${totalItems !== 1 ? "s" : ""}` : "Carrito"}
           </button>
         </div>
       </div>
 
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 20px" }}>
+      <div className="catalogo-content">
         {view === "catalog" ? (
           <>
-            <div style={{ marginBottom: 16 }}>
+            <div className="catalogo-search-wrap">
               <input
+                className="catalogo-search"
                 type="text" placeholder="🔍 Buscar producto, línea..."
                 value={search} onChange={e => setSearch(e.target.value)}
-                style={{
-                  width: "100%", padding: "10px 16px", borderRadius: 12,
-                  border: "1.5px solid #E8E8E8", fontSize: 14, outline: "none",
-                  boxSizing: "border-box", marginBottom: 12,
-                }}
               />
 
-              <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                <button onClick={() => setLineaFilter("todas")} style={pill(lineaFilter === "todas")}>Todas</button>
+              <div className="catalogo-filters">
+                <button onClick={() => setLineaFilter("todas")} className={`filter-pill ${lineaFilter === "todas" ? 'active' : ''}`}>Todas</button>
                 {LINEAS.map(l => (
-                  <button key={l} onClick={() => setLineaFilter(lineaFilter === l ? "todas" : l)} style={pill(lineaFilter === l)}>{l}</button>
+                  <button key={l} onClick={() => setLineaFilter(lineaFilter === l ? "todas" : l)} className={`filter-pill ${lineaFilter === l ? 'active' : ''}`}>{l}</button>
                 ))}
               </div>
 
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button onClick={() => setTipoFilter("todos")} style={pill(tipoFilter === "todos")}>Todos</button>
+              <div className="catalogo-filters">
+                <button onClick={() => setTipoFilter("todos")} className={`filter-pill ${tipoFilter === "todos" ? 'active' : ''}`}>Todos</button>
                 {TIPOS.map(t => (
-                  <button key={t} onClick={() => setTipoFilter(t)} style={pill(tipoFilter === t)}>{t}</button>
+                  <button key={t} onClick={() => setTipoFilter(tipoFilter === t ? "todos" : t)} className={`filter-pill ${tipoFilter === t ? 'active' : ''}`}>{t}</button>
                 ))}
               </div>
             </div>
 
-            <div style={{ fontSize: 12, color: "#BBB", marginBottom: 16 }}>
+            <div className="catalogo-count">
               {filtered.length} producto{filtered.length !== 1 ? "s" : ""}
               {lineaFilter !== "todas" ? ` en ${lineaFilter}` : ""}
               {tipoFilter !== "todos" ? ` · ${tipoFilter}` : ""}
             </div>
 
             {filtered.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "4rem 0", color: "#AAA" }}>
-                <div style={{ fontSize: 40, marginBottom: 8 }}>😕</div>
-                <div style={{ fontSize: 14 }}>Sin productos para ese filtro</div>
+              <div className="catalogo-empty">
+                <div className="catalogo-empty-icon">😕</div>
+                <div className="catalogo-empty-text">Sin productos para ese filtro</div>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
-                {filtered.map(p => <ProductCard key={p.id} product={p} precioVisible={precioVisible} onAdd={addToCart} />)}
+              <div className="catalogo-grid">
+                {filtered.map(p => (
+                  <ProductCard
+                    key={p.id} product={p} precioVisible={precioVisible}
+                    onAdd={addToCart} expanded={expandedId === p.id}
+                    onToggleExpand={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                  />
+                ))}
               </div>
             )}
           </>
@@ -440,14 +385,7 @@ export default function Catalogo() {
         )}
       </div>
 
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#1a1a1a", color: "#fff", padding: "10px 22px", borderRadius: 20,
-          fontSize: 13, fontWeight: 600, boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-          whiteSpace: "nowrap", zIndex: 999,
-        }}>{toast}</div>
-      )}
+      {toast && <div className="catalogo-toast">{toast}</div>}
     </div>
   );
 }
