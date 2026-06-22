@@ -1,9 +1,7 @@
-// src/pages/Catalogo.jsx
 import { useState, useMemo, useEffect } from "react";
 import { useApp } from "../context/AppContext";
-import { formatPrice, SELLER_PHONE } from "../data/store";
-
-import { supabase } from "../config/supabase"; // Ajustá la ruta según tus carpetas
+import { formatPrice, SELLER_PHONE, LINEAS, TIPOS } from "../data/store";
+import { ordersService } from "../services/ordersService";
 
 function WhatsAppIcon({ size = 20 }) {
   return (
@@ -13,21 +11,21 @@ function WhatsAppIcon({ size = 20 }) {
   );
 }
 
-function ProductCard({ product, onAdd }) {
-  const availableSizes = Object.entries(product.stock)
-    .filter(([, qty]) => qty > 0)
-    .map(([s]) => Number(s))
-    .sort((a, b) => a - b);
+const LINEA_COLORS = {
+  'Argan Recovery': { bg: '#FFF8E6', accent: '#D4A843', text: '#8B6914' },
+  'Biotina Therapy': { bg: '#F0F8FF', accent: '#4A90D9', text: '#2C5F8A' },
+  'Keratina Revitalize': { bg: '#F0FFF8', accent: '#1D9E75', text: '#0F6E56' },
+  'Neutro Balance': { bg: '#F8F8F8', accent: '#999', text: '#666' },
+  'Extra Acida Intense': { bg: '#FFF0F0', accent: '#D94A4A', text: '#8A2C2C' },
+};
 
-  const [selectedSize, setSelectedSize] = useState(availableSizes[0] ?? null);
+function ProductCard({ product, precioVisible, onAdd }) {
+  const [qty, setQty] = useState(1);
+  const price = product[precioVisible] || product.precio_reventa || 0;
+  const colors = LINEA_COLORS[product.linea] || LINEA_COLORS['Neutro Balance'];
+  const isIncluded = price === 0 && product.descripcion?.includes('Incluido');
 
-  if (!product.active) return null;
-
-  const bgColors = {
-    adulto: { base: "#F0F8FF", accent: "#E0F0FF" },
-    nino:   { base: "#FFF8F0", accent: "#FFE8D0" },
-  };
-  const bg = bgColors[product.cat] || bgColors.adulto;
+  if (isIncluded) return null;
 
   return (
     <div style={{
@@ -38,66 +36,77 @@ function ProductCard({ product, onAdd }) {
       onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 24px rgba(0,0,0,0.09)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "none"; }}
     >
-      {/* Imagen / emoji */}
       <div style={{
-        background: bg.base, height: 150,
+        background: colors.bg, height: 160,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 60, position: "relative",
+        position: "relative", overflow: "hidden",
       }}>
-        {product.tag && (
-          <span style={{
-            position: "absolute", top: 10, left: 10,
-            background: "#1a1a1a", color: "#fff",
-            fontSize: 10, fontWeight: 700, padding: "3px 8px",
-            borderRadius: 20, letterSpacing: "0.05em",
-          }}>{product.tag}</span>
+        <span style={{
+          position: "absolute", top: 10, left: 10,
+          background: colors.accent, color: "#fff",
+          fontSize: 10, fontWeight: 700, padding: "3px 8px",
+          borderRadius: 20, letterSpacing: "0.05em",
+        }}>{product.linea}</span>
+        {product.image_url ? (
+          <img src={product.image_url} alt={product.producto}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <div style={{ textAlign: "center", padding: 16 }}>
+            <div style={{ fontSize: 40, marginBottom: 4 }}>
+              {product.tipo === 'Shampoo' ? '🧴' : product.tipo === 'Máscara' ? '💆' : '💧'}
+            </div>
+            <div style={{ fontSize: 11, color: colors.text, fontWeight: 600 }}>{product.tipo}</div>
+          </div>
         )}
-        {product.image
-          ? <img src={product.image} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          : product.emoji
-        }
       </div>
 
-      <div style={{ padding: "12px 14px", flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ padding: "12px 14px", flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
         <div>
-          <div style={{ fontSize: 10, color: "#AAA", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>{product.brand}</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a1a" }}>{product.name}</div>
+          <div style={{ fontSize: 10, color: "#AAA", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            {product.tipo} · pH {product.ph}
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a1a" }}>{product.producto}</div>
+          <div style={{ fontSize: 11, color: "#999" }}>{product.tamanio}</div>
         </div>
 
-        <div style={{ fontSize: 17, fontWeight: 800, color: "#1a1a1a" }}>{formatPrice(product.price)}</div>
-
-        {/* Selector de talles */}
-        {availableSizes.length > 0 ? (
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {availableSizes.map(s => (
-              <button key={s} onClick={() => setSelectedSize(s)} style={{
-                padding: "3px 8px", borderRadius: 6, fontSize: 11, cursor: "pointer",
-                border: selectedSize === s ? "1.5px solid #1a1a1a" : "1px solid #E8E8E8",
-                background: selectedSize === s ? "#1a1a1a" : "transparent",
-                color: selectedSize === s ? "#fff" : "#666",
-                fontWeight: selectedSize === s ? 700 : 400,
-                transition: "all 0.12s",
-              }}>{s}</button>
+        {product.beneficios && (
+          <div style={{ fontSize: 11, color: "#666", lineHeight: 1.4 }}>
+            {product.beneficios.split(' - ').slice(0, 3).map((b, i) => (
+              <span key={i} style={{
+                display: "inline-block", background: "#F8F8F8", padding: "2px 6px",
+                borderRadius: 4, margin: "1px 2px", fontSize: 10,
+              }}>{b}</span>
             ))}
           </div>
-        ) : (
-          <div style={{ fontSize: 11, color: "#E24B4A", fontWeight: 600 }}>Sin stock disponible</div>
         )}
 
-        <button
-          disabled={!selectedSize}
-          onClick={() => onAdd(product, selectedSize)}
-          style={{
-            marginTop: "auto", padding: "9px", borderRadius: 10,
-            border: "1.5px solid #1a1a1a", background: "transparent",
-            color: "#1a1a1a", fontSize: 12, fontWeight: 700,
-            cursor: selectedSize ? "pointer" : "not-allowed",
-            opacity: selectedSize ? 1 : 0.3,
-            transition: "all 0.15s",
-          }}
-          onMouseEnter={e => { if (selectedSize) { e.currentTarget.style.background = "#1a1a1a"; e.currentTarget.style.color = "#fff"; } }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#1a1a1a"; }}
-        >+ Agregar al pedido</button>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#1a1a1a", marginTop: "auto" }}>
+          {formatPrice(price)}
+        </div>
+
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", border: "1px solid #E8E8E8", borderRadius: 8, overflow: "hidden" }}>
+            <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{
+              width: 28, height: 28, border: "none", background: "transparent",
+              cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#666",
+            }}>−</button>
+            <span style={{ width: 28, textAlign: "center", fontSize: 12, fontWeight: 700 }}>{qty}</span>
+            <button onClick={() => setQty(q => q + 1)} style={{
+              width: 28, height: 28, border: "none", background: "transparent",
+              cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#666",
+            }}>+</button>
+          </div>
+          <button
+            onClick={() => { onAdd(product, qty); setQty(1); }}
+            style={{
+              flex: 1, padding: "7px", borderRadius: 8, border: "1.5px solid #1a1a1a",
+              background: "#1a1a1a", color: "#fff", fontSize: 12, fontWeight: 700,
+              cursor: "pointer", transition: "all 0.15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#333"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#1a1a1a"; }}
+          >+ Agregar</button>
+        </div>
       </div>
     </div>
   );
@@ -106,21 +115,36 @@ function ProductCard({ product, onAdd }) {
 function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
   const { addOrder } = useApp();
   const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
   const [sent, setSent] = useState(false);
 
-  const total     = cart.reduce((s, c) => s + c.price * c.qty, 0);
-  const totalQty  = cart.reduce((s, c) => s + c.qty, 0);
+  const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
+  const totalQty = cart.reduce((s, c) => s + c.qty, 0);
 
-  function sendToWhatsApp() {
+  async function sendToWhatsApp() {
+    const items = cart.map(c => ({
+      name: c.name, tipo: c.tipo, tamanio: c.tamanio,
+      price: c.price, qty: c.qty,
+    }));
+
     let msg = "Hola! Quiero realizar el siguiente pedido:\n\n";
     cart.forEach(item => {
-      msg += `• ${item.name} — Talle ${item.size} x${item.qty} = ${formatPrice(item.price * item.qty)}\n`;
+      msg += `• ${item.name} (${item.tipo}) — ${item.tamanio} x${item.qty} = ${formatPrice(item.price * item.qty)}\n`;
     });
     msg += `\n*Total: ${formatPrice(total)}*`;
-    if (phone) msg += `\nMi número: ${phone}`;
+    if (name) msg += `\nNombre: ${name}`;
+    if (phone) msg += `\nTeléfono: ${phone}`;
 
-    // Registrar en el panel admin
-    addOrder({ client: phone || "Cliente nuevo", phone, items: cart.map(c => ({ name: c.name, size: c.size, qty: c.qty })), total });
+    try {
+      await addOrder({
+        cliente_nombre: name || "Cliente nuevo",
+        cliente_telefono: phone,
+        items,
+        total,
+      });
+    } catch (err) {
+      console.error("Error guardando pedido:", err);
+    }
 
     window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(msg)}`, "_blank");
     setSent(true);
@@ -129,7 +153,7 @@ function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
 
   if (sent) return (
     <div style={{ padding: "3rem", textAlign: "center" }}>
-      <div style={{ fontSize: 52, marginBottom: 12 }}>🎉</div>
+      <div style={{ fontSize: 52, marginBottom: 12 }}>✨</div>
       <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>¡Pedido enviado!</div>
       <div style={{ fontSize: 14, color: "#666", marginBottom: 24 }}>Se abrió WhatsApp con tu pedido. El vendedor te confirmará en breve.</div>
       <button onClick={onClose} style={{
@@ -147,7 +171,7 @@ function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
           padding: "6px 12px", cursor: "pointer", fontSize: 13, color: "#666",
         }}>← Volver</button>
         <div style={{ fontSize: 16, fontWeight: 700 }}>
-          Tu pedido <span style={{ color: "#999", fontWeight: 400, fontSize: 13 }}>({totalQty} {totalQty === 1 ? "par" : "pares"})</span>
+          Tu pedido <span style={{ color: "#999", fontWeight: 400, fontSize: 13 }}>({totalQty} {totalQty === 1 ? "producto" : "productos"})</span>
         </div>
       </div>
 
@@ -160,14 +184,16 @@ function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
         <>
           <div style={{ border: "1px solid #F0F0F0", borderRadius: 14, overflow: "hidden", marginBottom: 16 }}>
             {cart.map((item, i) => (
-              <div key={`${item.id}-${item.size}`} style={{
+              <div key={`${item.id}-${i}`} style={{
                 display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
                 borderBottom: i < cart.length - 1 ? "1px solid #F8F8F8" : "none", background: "#fff",
               }}>
-                <div style={{ fontSize: 26, minWidth: 36 }}>{item.emoji}</div>
+                <div style={{ fontSize: 26, minWidth: 36 }}>
+                  {item.tipo === 'Shampoo' ? '🧴' : item.tipo === 'Máscara' ? '💆' : '💧'}
+                </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{item.name}</div>
-                  <div style={{ fontSize: 11, color: "#999" }}>Talle {item.size} · {formatPrice(item.price)} c/u</div>
+                  <div style={{ fontSize: 11, color: "#999" }}>{item.tipo} · {item.tamanio} · {formatPrice(item.price)} c/u</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {[-1, 1].map(d => (
@@ -193,18 +219,25 @@ function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
             <span style={{ fontSize: 22, fontWeight: 800 }}>{formatPrice(total)}</span>
           </div>
 
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#999", marginBottom: 6, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-              Tu número de WhatsApp (opcional)
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#999", marginBottom: 4, letterSpacing: "0.05em", textTransform: "uppercase" }}>Tu nombre</div>
+              <input type="text" placeholder="Nombre" value={name}
+                onChange={e => setName(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box",
+                  border: "1.5px solid #E8E8E8", fontSize: 14, outline: "none",
+                }} />
             </div>
-            <input
-              type="tel" placeholder="+54 9 11 1234 5678" value={phone}
-              onChange={e => setPhone(e.target.value)}
-              style={{
-                width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box",
-                border: "1.5px solid #E8E8E8", fontSize: 14, outline: "none",
-              }}
-            />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#999", marginBottom: 4, letterSpacing: "0.05em", textTransform: "uppercase" }}>Tu número de WhatsApp (opcional)</div>
+              <input type="tel" placeholder="+54 9 11 1234 5678" value={phone}
+                onChange={e => setPhone(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box",
+                  border: "1.5px solid #E8E8E8", fontSize: 14, outline: "none",
+                }} />
+            </div>
           </div>
 
           <button onClick={sendToWhatsApp} style={{
@@ -224,74 +257,51 @@ function CartView({ cart, onClose, onChangeQty, onRemove, onSent }) {
 }
 
 export default function Catalogo() {
-  // 1. Traemos la instancia de supabase (asegurate de que la ruta a supabaseClient sea la correcta)
-  // Si no usás una instancia global, podés importar el cliente arriba de todo
-  const { products } = useApp(); 
-  
-  // 2. Creamos un estado local para guardar los productos REALES de Supabase
-  const [realProducts, setRealProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { products, config, loading, loadError, loadData } = useApp();
+  const [lineaFilter, setLineaFilter] = useState("todas");
+  const [tipoFilter, setTipoFilter] = useState("todos");
+  const [search, setSearch] = useState("");
+  const [cart, setCart] = useState([]);
+  const [view, setView] = useState("catalog");
+  const [toast, setToast] = useState(null);
 
-  const [catFilter, setCatFilter]   = useState("todos");
-  const [sizeFilter, setSizeFilter] = useState(null);
-  const [cart, setCart]             = useState([]);
-  const [view, setView]             = useState("catalog");
-  const [toast, setToast]           = useState(null);
+  const precioVisible = config?.precio_visible || "precio_reventa";
 
-  // 3. Efecto para buscar los productos en la base de datos de verdad
-  useEffect(() => {
-    async function fetchCatalogo() {
-      try {
-        const { data, error } = await supabase
-          .from('productos')
-          .select('*')
-          .order('id', { ascending: true });
-
-        if (error) throw error;
-        setRealProducts(data || []);
-      } catch (err) {
-        console.error("Error cargando catálogo desde Supabase:", err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchCatalogo();
-  }, []);
-
-  // 4. Cambiamos tus useMemo para que usen 'realProducts' en vez de 'products' del context
-  const allSizes = useMemo(() => {
-    const s = new Set();
-    realProducts.filter(p => p.active).forEach(p => Object.keys(p.stock).forEach(t => s.add(Number(t))));
-    return [...s].sort((a, b) => a - b);
-  }, [realProducts]);
-
-  const filtered = useMemo(() => realProducts.filter(p => {
+  const filtered = useMemo(() => products.filter(p => {
     if (!p.active) return false;
-    const catOk  = catFilter === "todos" || p.cat === catFilter;
-    const sizeOk = !sizeFilter || (sizeFilter in p.stock && p.stock[sizeFilter] > 0);
-    return catOk && sizeOk;
-  }), [realProducts, catFilter, sizeFilter]);
+    const lineaOk = lineaFilter === "todas" || p.linea === lineaFilter;
+    const tipoOk = tipoFilter === "todos" || p.tipo === tipoFilter;
+    const searchOk = !search ||
+      p.producto.toLowerCase().includes(search.toLowerCase()) ||
+      p.linea.toLowerCase().includes(search.toLowerCase()) ||
+      p.descripcion?.toLowerCase().includes(search.toLowerCase());
+    return lineaOk && tipoOk && searchOk;
+  }), [products, lineaFilter, tipoFilter, search]);
 
   const totalItems = cart.reduce((s, c) => s + c.qty, 0);
 
-  function addToCart(product, size) {
+  function addToCart(product, qty) {
     setCart(prev => {
-      const ex = prev.find(c => c.id === product.id && c.size === size);
+      const ex = prev.find(c => c.id === product.id);
       return ex
-        ? prev.map(c => c.id === product.id && c.size === size ? { ...c, qty: c.qty + 1 } : c)
-        : [...prev, { ...product, size, qty: 1 }];
+        ? prev.map(c => c.id === product.id ? { ...c, qty: c.qty + qty } : c)
+        : [...prev, {
+            id: product.id, name: product.producto, tipo: product.tipo,
+            tamanio: product.tamanio, price: product[precioVisible] || product.precio_reventa || 0,
+            qty,
+          }];
     });
-    showToast(`${product.name} talle ${size} agregado ✓`);
+    showToast(`${product.producto} (${product.tamanio}) agregado ✓`);
   }
 
   function changeQty(item, delta) {
     setCart(prev => prev.map(c =>
-      c.id === item.id && c.size === item.size ? { ...c, qty: c.qty + delta } : c
+      c.id === item.id ? { ...c, qty: c.qty + delta } : c
     ).filter(c => c.qty > 0));
   }
 
   function removeItem(item) {
-    setCart(prev => prev.filter(c => !(c.id === item.id && c.size === item.size)));
+    setCart(prev => prev.filter(c => c.id !== item.id));
   }
 
   function showToast(msg) {
@@ -306,24 +316,31 @@ export default function Catalogo() {
     color: active ? "#fff" : "#666",
     fontWeight: active ? 700 : 400,
     transition: "all 0.15s",
+    whiteSpace: "nowrap",
   });
 
-  const sizePill = (active) => ({
-    padding: "4px 10px", borderRadius: 8, fontSize: 12, cursor: "pointer",
-    border: active ? "1.5px solid #1D9E75" : "1px solid #E8E8E8",
-    background: active ? "#1D9E75" : "#fff",
-    color: active ? "#fff" : "#666",
-    fontWeight: active ? 700 : 400,
-    transition: "all 0.15s",
-  });
-
-  // Pantalla de carga estética opcional
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: "#666" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 10, animate: "bounce 1s infinite" }}>👟</div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Cargando catálogo real...</div>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>✨</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Cargando catálogo Vexa...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+        <div style={{ textAlign: "center", padding: 40, maxWidth: 400 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: "#A32D2D" }}>Error al cargar</div>
+          <div style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>{loadError}</div>
+          <button onClick={loadData} style={{
+            padding: "10px 24px", borderRadius: 10, border: "1.5px solid #1a1a1a",
+            background: "#1a1a1a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}>Reintentar</button>
         </div>
       </div>
     );
@@ -331,7 +348,6 @@ export default function Catalogo() {
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", background: "#FAFAFA", minHeight: "100vh" }}>
-      {/* Header */}
       <div style={{
         background: "#fff", borderBottom: "1px solid #F0F0F0",
         position: "sticky", top: 0, zIndex: 100,
@@ -341,10 +357,14 @@ export default function Catalogo() {
           height: 58, display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 24 }}>👟</span>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: "#1a1a1a",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "#fff", fontSize: 14, fontWeight: 800, letterSpacing: "-0.03em",
+            }}>V</div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em" }}>Calzado Mayorista</div>
-              <div style={{ fontSize: 10, color: "#AAA", letterSpacing: "0.1em" }}>DISTRIBUIDORA OFICIAL</div>
+              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em" }}>Vexa</div>
+              <div style={{ fontSize: 10, color: "#AAA", letterSpacing: "0.1em" }}>CATÁLOGO MAYORISTA</div>
             </div>
           </div>
           <button
@@ -367,23 +387,35 @@ export default function Catalogo() {
         {view === "catalog" ? (
           <>
             <div style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                {[["todos", "Todos"], ["adulto", "👟 Adultos"], ["nino", "🧒 Niños"]].map(([v, l]) => (
-                  <button key={v} onClick={() => setCatFilter(v)} style={pill(catFilter === v)}>{l}</button>
+              <input
+                type="text" placeholder="🔍 Buscar producto, línea..."
+                value={search} onChange={e => setSearch(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 16px", borderRadius: 12,
+                  border: "1.5px solid #E8E8E8", fontSize: 14, outline: "none",
+                  boxSizing: "border-box", marginBottom: 12,
+                }}
+              />
+
+              <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                <button onClick={() => setLineaFilter("todas")} style={pill(lineaFilter === "todas")}>Todas</button>
+                {LINEAS.map(l => (
+                  <button key={l} onClick={() => setLineaFilter(lineaFilter === l ? "todas" : l)} style={pill(lineaFilter === l)}>{l}</button>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600, letterSpacing: "0.06em" }}>TALLE:</span>
-                <button onClick={() => setSizeFilter(null)} style={sizePill(!sizeFilter)}>Todos</button>
-                {allSizes.map(s => (
-                  <button key={s} onClick={() => setSizeFilter(s)} style={sizePill(sizeFilter === s)}>{s}</button>
+
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button onClick={() => setTipoFilter("todos")} style={pill(tipoFilter === "todos")}>Todos</button>
+                {TIPOS.map(t => (
+                  <button key={t} onClick={() => setTipoFilter(t)} style={pill(tipoFilter === t)}>{t}</button>
                 ))}
               </div>
             </div>
 
             <div style={{ fontSize: 12, color: "#BBB", marginBottom: 16 }}>
               {filtered.length} producto{filtered.length !== 1 ? "s" : ""}
-              {sizeFilter ? ` en talle ${sizeFilter}` : ""}
+              {lineaFilter !== "todas" ? ` en ${lineaFilter}` : ""}
+              {tipoFilter !== "todos" ? ` · ${tipoFilter}` : ""}
             </div>
 
             {filtered.length === 0 ? (
@@ -392,8 +424,8 @@ export default function Catalogo() {
                 <div style={{ fontSize: 14 }}>Sin productos para ese filtro</div>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 14 }}>
-                {filtered.map(p => <ProductCard key={p.id} product={p} onAdd={addToCart} />)}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
+                {filtered.map(p => <ProductCard key={p.id} product={p} precioVisible={precioVisible} onAdd={addToCart} />)}
               </div>
             )}
           </>

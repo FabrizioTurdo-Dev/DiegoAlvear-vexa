@@ -1,10 +1,10 @@
-// src/pages/Admin.jsx
 import { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
-import { formatPrice, ALL_SIZES_ADULTO, ALL_SIZES_NINO } from "../data/store";
-import { supabase } from "../config/supabase";
+import { formatPrice, LINEAS, TIPOS, getTamaniosForTipo, PRECIO_FIELDS, PRECIO_VISIBLE_OPTIONS } from "../data/store";
+import { productsService } from "../services/productsService";
+import { ordersService } from "../services/ordersService";
+import { configService } from "../services/configService";
 
-// ─── UI atómica ────────────────────────────────────────────────────────────
 const STATUS_COLORS = {
   pendiente:  { bg: "#FFF8E6", text: "#B07D00", border: "#FADA79" },
   confirmado: { bg: "#E8F8EF", text: "#0F6E56", border: "#6DCCA0" },
@@ -100,57 +100,55 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
-// ─── Formulario producto ───────────────────────────────────────────────────
 function ProductForm({ product, onSave, onCancel }) {
   const isEdit = !!product?.id;
   const [form, setForm] = useState({
-    name:   product?.name   || "",
-    brand:  product?.brand  || "",
-    cat:    product?.cat    || "adulto",
-    price:  product?.price  || "",
-    tag:    product?.tag    || "",
+    linea: product?.linea || LINEAS[0],
+    producto: product?.producto || "",
+    tipo: product?.tipo || TIPOS[0],
+    ph: product?.ph || "-",
+    tamanio: product?.tamanio || "",
+    precio_bacha: product?.precio_bacha || "",
+    precio_reventa: product?.precio_reventa || "",
+    precio_salon: product?.precio_salon || "",
+    precio_sugerido: product?.precio_sugerido || "",
+    precio_visible: product?.precio_visible || "precio_reventa",
+    descripcion: product?.descripcion || "",
+    beneficios: product?.beneficios || "",
+    indicaciones: product?.indicaciones || "",
     active: product?.active !== false,
-    emoji:  product?.emoji  || "👟",
-    stock:  product?.stock  || {},
-    image:  product?.image  || null,
+    image_url: product?.image_url || null,
   });
-  const [imgPreview, setImgPreview] = useState(product?.image || null);
+  const [imgPreview, setImgPreview] = useState(product?.image_url || null);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef();
 
-  const sizePool = form.cat === "adulto" ? ALL_SIZES_ADULTO : ALL_SIZES_NINO;
-
+  const tamanios = getTamaniosForTipo(form.tipo);
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
-  function toggleSize(s) {
-    setForm(f => {
-      const st = { ...f.stock };
-      s in st ? delete st[s] : (st[s] = 0);
-      return { ...f, stock: st };
-    });
-  }
-
-  function setStock(s, val) {
-    setForm(f => ({ ...f, stock: { ...f.stock, [s]: Math.max(0, parseInt(val) || 0) } }));
-  }
-
-  function handleImage(e) {
+  async function handleImage(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => { setImgPreview(ev.target.result); set("image", ev.target.result); };
-    reader.readAsDataURL(file);
+    setUploading(true);
+    try {
+      const url = await productsService.uploadImage(file);
+      setImgPreview(url);
+      set("image_url", url);
+    } catch (err) {
+      alert("Error subiendo imagen: " + err.message);
+    } finally {
+      setUploading(false);
+    }
   }
 
-  function handleSubmit() {
-    if (!form.name || !form.brand || !form.price) return alert("Completá nombre, marca y precio");
-    onSave({ ...form, id: product?.id || null, price: Number(form.price) });
+  async function handleSubmit() {
+    if (!form.producto || !form.linea || !form.tipo) return alert("Completá línea, producto y tipo");
+    if (!form.tamanio) return alert("Seleccioná un tamaño");
+    onSave({ ...form, id: product?.id || null });
   }
-
-  const activeSizes = Object.keys(form.stock).map(Number).sort((a, b) => a - b);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* Imagen */}
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <div onClick={() => fileRef.current.click()} style={{
           width: 100, height: 100, borderRadius: 12, border: "2px dashed #E8E8E8",
@@ -160,31 +158,52 @@ function ProductForm({ product, onSave, onCancel }) {
         }}>
           {imgPreview
             ? <img src={imgPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            : form.emoji}
+            : (form.tipo === 'Shampoo' ? '🧴' : form.tipo === 'Máscara' ? '💆' : '💧')}
         </div>
         <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImage} />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-          <Btn small variant="ghost" onClick={() => fileRef.current.click()}>📎 Subir foto</Btn>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {["👟", "👠", "👡", "👞", "🥿", "⚡", "🎨"].map(e => (
-              <button key={e} onClick={() => set("emoji", e)} style={{
-                fontSize: 18, border: form.emoji === e ? "2px solid #1a1a1a" : "1px solid #E8E8E8",
-                borderRadius: 8, padding: "4px 8px", cursor: "pointer", background: "#fff",
-              }}>{e}</button>
-            ))}
-          </div>
+          <Btn small variant="ghost" onClick={() => fileRef.current.click()} disabled={uploading}>
+            {uploading ? '⏳ Subiendo...' : '📎 Subir foto'}
+          </Btn>
+          {imgPreview && (
+            <Btn small variant="danger" onClick={() => { setImgPreview(null); set("image_url", null); }}>
+              ✕ Quitar imagen
+            </Btn>
+          )}
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Input label="Nombre *" value={form.name} onChange={e => set("name", e.target.value)} placeholder="Runner Pro" />
-        <Input label="Marca *" value={form.brand} onChange={e => set("brand", e.target.value)} placeholder="Nike" />
-        <Input label="Precio *" type="number" value={form.price} onChange={e => set("price", e.target.value)} placeholder="12500" />
-        <Select label="Categoría" value={form.cat} onChange={e => { set("cat", e.target.value); set("stock", {}); }}>
-          <option value="adulto">Adultos</option>
-          <option value="nino">Niños</option>
+        <Select label="Línea *" value={form.linea} onChange={e => set("linea", e.target.value)}>
+          {LINEAS.map(l => <option key={l} value={l}>{l}</option>)}
         </Select>
-        <Input label="Tag (etiqueta)" value={form.tag} onChange={e => set("tag", e.target.value)} placeholder="Nuevo, Oferta…" />
+        <Select label="Tipo *" value={form.tipo} onChange={e => { set("tipo", e.target.value); set("tamanio", ""); }}>
+          {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+        </Select>
+        <Input label="Producto *" value={form.producto} onChange={e => set("producto", e.target.value)} placeholder="Shampoo, Máscara..." />
+        <Input label="pH" value={form.ph} onChange={e => set("ph", e.target.value)} placeholder="5.5" />
+        <Select label="Tamaño *" value={form.tamanio} onChange={e => set("tamanio", e.target.value)}>
+          <option value="">Seleccionar...</option>
+          {tamanios.map(t => <option key={t} value={t}>{t}</option>)}
+        </Select>
+        <Select label="Precio visible en catálogo" value={form.precio_visible} onChange={e => set("precio_visible", e.target.value)}>
+          {PRECIO_VISIBLE_OPTIONS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+        </Select>
+      </div>
+
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 10 }}>
+          Precios
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {PRECIO_FIELDS.map(f => (
+            <Input key={f.key} label={f.label} type="number" value={form[f.key]}
+              onChange={e => set(f.key, e.target.value)} placeholder="0" />
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase" }}>Estado</label>
           <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
@@ -200,116 +219,58 @@ function ProductForm({ product, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Talles y stock */}
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 10 }}>
-          Talles y stock
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-          {sizePool.map(s => (
-            <button key={s} onClick={() => toggleSize(s)} style={{
-              padding: "4px 10px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-              border: s in form.stock ? "1.5px solid #1D9E75" : "1px solid #E8E8E8",
-              background: s in form.stock ? "#E8F8EF" : "#fff",
-              color: s in form.stock ? "#0F6E56" : "#666",
-              fontWeight: s in form.stock ? 700 : 400,
-            }}>{s}</button>
-          ))}
-        </div>
-        {activeSizes.length > 0 && (
-          <div style={{ background: "#FAFAFA", borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8 }}>
-              {activeSizes.map(s => (
-                <div key={s} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <label style={{ fontSize: 11, color: "#888", fontWeight: 700, textAlign: "center" }}>T.{s}</label>
-                  <input
-                    type="number" min="0" value={form.stock[s]}
-                    onChange={e => setStock(s, e.target.value)}
-                    style={{
-                      padding: "6px 8px", borderRadius: 6, border: "1.5px solid",
-                      borderColor: form.stock[s] === 0 ? "#F09595" : "#E8E8E8",
-                      fontSize: 13, textAlign: "center",
-                      color: form.stock[s] === 0 ? "#E24B4A" : "#1a1a1a",
-                      background: "#fff", outline: "none",
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      <Input label="Descripción" value={form.descripcion} onChange={e => set("descripcion", e.target.value)} placeholder="Descripción del producto" />
+      <Input label="Beneficios" value={form.beneficios} onChange={e => set("beneficios", e.target.value)} placeholder="Hidratación - Brillo - Reparación" />
+      <Input label="Indicaciones" value={form.indicaciones} onChange={e => set("indicaciones", e.target.value)} placeholder="Cabello dañado - Frizz" />
 
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 8, borderTop: "1px solid #F0F0F0" }}>
         <Btn variant="ghost" onClick={onCancel}>Cancelar</Btn>
-        <Btn onClick={handleSubmit}>{isEdit ? "Guardar cambios" : "Crear producto"}</Btn>
+        <Btn onClick={handleSubmit} disabled={uploading}>{isEdit ? "Guardar cambios" : "Crear producto"}</Btn>
       </div>
     </div>
   );
 }
 
-// ─── Sección Productos (Conectada a Supabase) ──────────────────────────────
 function ProductsSection() {
-  const { products, setProducts } = useApp();
+  const { products, refreshProducts } = useApp();
   const [modal, setModal] = useState(null);
 
-  useEffect(() => {
-    async function fetchProducts() {
-      const { data, error } = await supabase
-        .from("productos")
-        .select("*")
-        .order("id", { ascending: false });
-      if (!error && data) setProducts(data);
-      else console.error("Error al traer productos:", error);
-    }
-    fetchProducts();
-  }, [setProducts]);
-
   async function saveProduct(formData) {
-    if (formData.id) {
-      const { data, error } = await supabase
-        .from("productos")
-        .update({
-          name: formData.name, brand: formData.brand, cat: formData.cat,
-          price: formData.price, tag: formData.tag, active: formData.active,
-          emoji: formData.emoji, stock: formData.stock, image: formData.image,
-        })
-        .eq("id", formData.id)
-        .select();
-      if (error) return alert(`Error al actualizar: ${error.message}`);
-      setProducts(prev => prev.map(p => p.id === formData.id ? data[0] : p));
-    } else {
-      const { data, error } = await supabase
-        .from("productos")
-        .insert([{
-          name: formData.name, brand: formData.brand, cat: formData.cat,
-          price: formData.price, tag: formData.tag, active: formData.active,
-          emoji: formData.emoji, stock: formData.stock, image: formData.image,
-        }])
-        .select();
-      if (error) return alert(`Error al guardar: ${error.message}`);
-      setProducts(prev => [data[0], ...prev]);
+    try {
+      if (formData.id) {
+        await productsService.update(formData.id, formData);
+      } else {
+        await productsService.create(formData);
+      }
+      await refreshProducts();
+      setModal(null);
+    } catch (err) {
+      alert("Error: " + err.message);
     }
-    setModal(null);
   }
 
   async function deleteProduct(id) {
-    if (window.confirm("¿Eliminar este producto permanentemente?")) {
-      const { error } = await supabase.from("productos").delete().eq("id", id);
-      if (error) return alert(`Error al eliminar: ${error.message}`);
-      setProducts(prev => prev.filter(p => p.id !== id));
+    if (!window.confirm("¿Eliminar este producto permanentemente?")) return;
+    try {
+      await productsService.delete(id);
+      await refreshProducts();
+    } catch (err) {
+      alert("Error: " + err.message);
     }
   }
 
   async function toggleActive(product) {
-    const next = !product.active;
-    const { error } = await supabase.from("productos").update({ active: next }).eq("id", product.id);
-    if (error) return alert(`Error al cambiar estado: ${error.message}`);
-    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, active: next } : p));
+    try {
+      await productsService.toggleActive(product.id, !product.active);
+      await refreshProducts();
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
   }
 
-  const sizes = (p) => Object.keys(p.stock || {}).map(Number).sort((a, b) => a - b);
-  const totalStock = (p) => Object.values(p.stock || {}).reduce((s, v) => s + v, 0);
+  const totalStock = (p) => {
+    return (Number(p.precio_bacha) > 0 ? 1 : 0) + (Number(p.precio_reventa) > 0 ? 1 : 0);
+  };
 
   return (
     <div>
@@ -325,8 +286,8 @@ function ProductsSection() {
         {[
           { label: "Total", val: products.length, icon: "📦" },
           { label: "Activos", val: products.filter(p => p.active).length, icon: "✅" },
-          { label: "Talles sin stock", val: products.reduce((s, p) => s + Object.values(p.stock || {}).filter(v => v === 0).length, 0), icon: "⚠️" },
-          { label: "Adult / Niño", val: `${products.filter(p => p.cat === "adulto").length} / ${products.filter(p => p.cat === "nino").length}`, icon: "👥" },
+          { label: "Con imagen", val: products.filter(p => p.image_url).length, icon: "🖼️" },
+          { label: "Líneas", val: [...new Set(products.map(p => p.linea))].length, icon: "🏷️" },
         ].map(s => (
           <div key={s.label} style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 12, padding: "14px 16px" }}>
             <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
@@ -346,7 +307,7 @@ function ProductsSection() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#FAFAFA" }}>
-                {["Producto", "Categoría", "Precio", "Talles / Stock", "Estado", ""].map(h => (
+                {["Producto", "Línea", "Tamaño", "Precio visible", "Estado", ""].map(h => (
                   <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.05em", borderBottom: "1px solid #F0F0F0" }}>{h}</th>
                 ))}
               </tr>
@@ -357,28 +318,19 @@ function ProductsSection() {
                   <td style={{ padding: "12px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 8, overflow: "hidden", background: "#F8F8F8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-                        {p.image ? <img src={p.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : p.emoji}
+                        {p.image_url ? <img src={p.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (p.tipo === 'Shampoo' ? '🧴' : p.tipo === 'Máscara' ? '💆' : '💧')}
                       </div>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: "#999" }}>{p.brand}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>{p.producto}</div>
+                        <div style={{ fontSize: 11, color: "#999" }}>{p.tipo} · pH {p.ph}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 16px", fontSize: 12, color: "#666" }}>{p.cat === "adulto" ? "👟 Adulto" : "🧒 Niño"}</td>
-                  <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 700 }}>{formatPrice(p.price)}</td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      {sizes(p).map(s => (
-                        <span key={s} style={{
-                          fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 700,
-                          background: p.stock[s] === 0 ? "#FEF0F0" : "#E8F8EF",
-                          color: p.stock[s] === 0 ? "#A32D2D" : "#0F6E56",
-                          border: `1px solid ${p.stock[s] === 0 ? "#F09595" : "#6DCCA0"}`,
-                        }}>{s}: {p.stock[s]}</span>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 10, color: "#AAA", marginTop: 2 }}>{totalStock(p)} pares totales</div>
+                  <td style={{ padding: "12px 16px", fontSize: 12, color: "#666" }}>{p.linea}</td>
+                  <td style={{ padding: "12px 16px", fontSize: 12, color: "#666" }}>{p.tamanio}</td>
+                  <td style={{ padding: "12px 16px", fontSize: 13, fontWeight: 700 }}>
+                    {formatPrice(p[p.precio_visible] || p.precio_reventa || 0)}
+                    <div style={{ fontSize: 10, color: "#AAA" }}>{PRECIO_VISIBLE_OPTIONS.find(o => o.key === p.precio_visible)?.label || 'Reventa'}</div>
                   </td>
                   <td style={{ padding: "12px 16px" }}>
                     <button onClick={() => toggleActive(p)} style={{
@@ -402,7 +354,7 @@ function ProductsSection() {
       </div>
 
       {modal && (
-        <Modal title={modal === "new" ? "Nuevo producto" : `Editar: ${modal.name}`} onClose={() => setModal(null)} wide>
+        <Modal title={modal === "new" ? "Nuevo producto" : `Editar: ${modal.producto}`} onClose={() => setModal(null)} wide>
           <ProductForm product={modal === "new" ? null : modal} onSave={saveProduct} onCancel={() => setModal(null)} />
         </Modal>
       )}
@@ -410,20 +362,17 @@ function ProductsSection() {
   );
 }
 
-// ─── Sección Pedidos ──────────────────────────────────────────────────────
 function OrdersSection() {
-  const { orders, setOrders } = useApp();
+  const { orders, loadOrders, updateOrderStatus } = useApp();
   const [filter, setFilter] = useState("todos");
 
-  function setStatus(id, status) {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
-  }
+  useEffect(() => { loadOrders(); }, []);
 
   function sendWA(order) {
-    const msg = `Hola ${order.client}! ✅ Confirmamos tu pedido #${order.id}:\n\n` +
-      order.items.map(i => `• ${i.name} talle ${i.size} x${i.qty}`).join("\n") +
-      `\n\nTotal: ${formatPrice(order.total)}\nTe avisamos cuando esté listo para envío. 👟`;
-    window.open(`https://wa.me/${order.phone}?text=${encodeURIComponent(msg)}`, "_blank");
+    const msg = `Hola ${order.cliente_nombre}! ✅ Confirmamos tu pedido:\n\n` +
+      order.items.map(i => `• ${i.name} (${i.tipo}) ${i.tamanio} x${i.qty}`).join("\n") +
+      `\n\nTotal: ${formatPrice(order.total)}\nTe avisamos cuando esté listo. ✨`;
+    window.open(`https://wa.me/${order.cliente_telefono}?text=${encodeURIComponent(msg)}`, "_blank");
   }
 
   const counts = {
@@ -438,7 +387,7 @@ function OrdersSection() {
     <div>
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 18, fontWeight: 800 }}>Pedidos</div>
-        <div style={{ fontSize: 12, color: "#999" }}>{orders.length} pedidos en total · Los pedidos se guardan en memoria por sesión</div>
+        <div style={{ fontSize: 12, color: "#999" }}>{orders.length} pedidos en total</div>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
@@ -465,10 +414,13 @@ function OrdersSection() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                  <span style={{ fontSize: 14, fontWeight: 800 }}>{order.client}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800 }}>{order.cliente_nombre}</span>
                   <Badge status={order.status} />
                 </div>
-                <div style={{ fontSize: 11, color: "#AAA" }}>Pedido #{order.id} · {order.date}</div>
+                <div style={{ fontSize: 11, color: "#AAA" }}>
+                  {order.cliente_telefono && `${order.cliente_telefono} · `}
+                  {new Date(order.created_at).toLocaleDateString("es-AR")}
+                </div>
               </div>
               <div style={{ fontSize: 17, fontWeight: 800 }}>{formatPrice(order.total)}</div>
             </div>
@@ -477,7 +429,7 @@ function OrdersSection() {
                 <span key={i} style={{
                   fontSize: 11, padding: "3px 8px", borderRadius: 6,
                   background: "#F8F8F8", color: "#555", border: "1px solid #EEE",
-                }}>{item.name} t.{item.size} ×{item.qty}</span>
+                }}>{item.name} ({item.tipo}) {item.tamanio} ×{item.qty}</span>
               ))}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -485,9 +437,9 @@ function OrdersSection() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
                 Confirmar por WA
               </Btn>
-              {order.status === "pendiente"  && <Btn small variant="success" onClick={() => setStatus(order.id, "confirmado")}>✓ Confirmar</Btn>}
-              {order.status === "confirmado" && <Btn small variant="ghost"   onClick={() => setStatus(order.id, "enviado")}>🚚 Marcar enviado</Btn>}
-              {order.status !== "cancelado"  && <Btn small variant="danger"  onClick={() => setStatus(order.id, "cancelado")}>Cancelar</Btn>}
+              {order.status === "pendiente"  && <Btn small variant="success" onClick={() => updateOrderStatus(order.id, "confirmado")}>✓ Confirmar</Btn>}
+              {order.status === "confirmado" && <Btn small variant="ghost"   onClick={() => updateOrderStatus(order.id, "enviado")}>🚚 Marcar enviado</Btn>}
+              {order.status !== "cancelado"  && <Btn small variant="danger"  onClick={() => updateOrderStatus(order.id, "cancelado")}>Cancelar</Btn>}
             </div>
           </div>
         ))}
@@ -496,21 +448,42 @@ function OrdersSection() {
   );
 }
 
-// ─── Sección Configuración ────────────────────────────────────────────────
 function SettingsSection() {
+  const { config, refreshConfig } = useApp();
   const [cfg, setCfg] = useState({
-    shopName: "Calzado Mayorista", phone: "5491155667788",
-    minOrder: 3, currency: "ARS",
-    welcomeMsg: "Hola! Gracias por elegirnos. Revisá nuestro catálogo mayorista 👟",
+    shop_name: "Vexa",
+    phone: "5491154922800",
+    currency: "ARS",
+    welcome_msg: "Hola! Gracias por elegir Vexa. Revisá nuestro catálogo mayorista",
+    precio_visible: "precio_reventa",
+    min_order: 0,
   });
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (config) {
+      setCfg({
+        shop_name: config.shop_name || "Vexa",
+        phone: config.phone || "5491154922800",
+        currency: config.currency || "ARS",
+        welcome_msg: config.welcome_msg || "",
+        precio_visible: config.precio_visible || "precio_reventa",
+        min_order: config.min_order || 0,
+      });
+    }
+  }, [config]);
+
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
 
-  function handleSave() {
-    // En el MVP esto solo muestra confirmación visual.
-    // Para persistir: guardarlo en Supabase o localStorage.
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  async function handleSave() {
+    try {
+      await configService.update(cfg);
+      await refreshConfig();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
   }
 
   return (
@@ -520,32 +493,41 @@ function SettingsSection() {
         <div style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 14, padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14 }}>🏪 Datos del negocio</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Input label="Nombre" value={cfg.shopName} onChange={e => set("shopName", e.target.value)} />
+            <Input label="Nombre" value={cfg.shop_name} onChange={e => set("shop_name", e.target.value)} />
             <Input label="Teléfono WhatsApp" value={cfg.phone} onChange={e => set("phone", e.target.value)} placeholder="5491155667788" />
-            <Input label="Pedido mínimo (pares)" type="number" value={cfg.minOrder} onChange={e => set("minOrder", e.target.value)} />
+            <Input label="Pedido mínimo" type="number" value={cfg.min_order} onChange={e => set("min_order", e.target.value)} />
             <Select label="Moneda" value={cfg.currency} onChange={e => set("currency", e.target.value)}>
               <option value="ARS">ARS – Peso argentino</option>
               <option value="USD">USD – Dólar</option>
               <option value="BRL">BRL – Real</option>
             </Select>
           </div>
-          <div style={{ marginTop: 12, padding: "10px 14px", background: "#FFFBEA", borderRadius: 8, fontSize: 12, color: "#B07D00", border: "1px solid #FADA79" }}>
-            ⚠️ Para que el teléfono de WhatsApp cambie en el catálogo, editá también <code>SELLER_PHONE</code> en <code>src/data/store.js</code>
+        </div>
+
+        <div style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 14, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14 }}>💰 Precio visible en catálogo</div>
+          <Select label="Mostrar precio" value={cfg.precio_visible} onChange={e => set("precio_visible", e.target.value)}>
+            {PRECIO_VISIBLE_OPTIONS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </Select>
+          <div style={{ marginTop: 8, padding: "10px 14px", background: "#F0F8FF", borderRadius: 8, fontSize: 12, color: "#1A4FAB" }}>
+            Este precio es el que se muestra en el catálogo público para todos los productos.
           </div>
         </div>
+
         <div style={{ background: "#fff", border: "1px solid #F0F0F0", borderRadius: 14, padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14 }}><span style={{ color: "#25D366" }}>●</span> Mensajes WhatsApp</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase" }}>Mensaje de bienvenida</label>
-              <textarea value={cfg.welcomeMsg} onChange={e => set("welcomeMsg", e.target.value)} rows={3}
+              <textarea value={cfg.welcome_msg} onChange={e => set("welcome_msg", e.target.value)} rows={3}
                 style={{ padding: "9px 12px", borderRadius: 8, border: "1.5px solid #E8E8E8", fontSize: 13, resize: "vertical", fontFamily: "inherit", outline: "none" }} />
             </div>
             <div style={{ background: "#F0FFF8", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#0F6E56" }}>
-              <strong>Preview:</strong> "{cfg.welcomeMsg}"
+              <strong>Preview:</strong> "{cfg.welcome_msg}"
             </div>
           </div>
         </div>
+
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12 }}>
           {saved && <span style={{ fontSize: 13, color: "#0F6E56", fontWeight: 600 }}>✓ Guardado</span>}
           <Btn onClick={handleSave}>Guardar cambios</Btn>
@@ -555,7 +537,6 @@ function SettingsSection() {
   );
 }
 
-// ─── Admin principal ──────────────────────────────────────────────────────
 const NAV = [
   { id: "products", label: "Productos", icon: "📦" },
   { id: "orders",   label: "Pedidos",   icon: "🛒" },
@@ -563,21 +544,20 @@ const NAV = [
 ];
 
 function AdminApp() {
-  const { orders } = useApp();
+  const { orders, signOut, user } = useApp();
   const [page, setPage] = useState("products");
   const pending = orders.filter(o => o.status === "pendiente").length;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif", background: "#F7F7F7" }}>
-      {/* Sidebar */}
       <div style={{
         width: 210, background: "#fff", borderRight: "1px solid #F0F0F0",
         display: "flex", flexDirection: "column", padding: "20px 12px",
         position: "sticky", top: 0, height: "100vh",
       }}>
         <div style={{ padding: "0 8px", marginBottom: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "-0.02em" }}>👟 Admin</div>
-          <div style={{ fontSize: 11, color: "#AAA" }}>Calzado Mayorista</div>
+          <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "-0.02em" }}>✨ Admin Vexa</div>
+          <div style={{ fontSize: 11, color: "#AAA" }}>{user?.email}</div>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
           {NAV.map(n => (
@@ -597,14 +577,19 @@ function AdminApp() {
             </button>
           ))}
         </nav>
-        {/* FIX: HashRouter usa /#/ para navegar */}
-        <a href="/#/" style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
-          borderRadius: 8, color: "#AAA", fontSize: 12, textDecoration: "none",
-        }}>🌐 Ver catálogo</a>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <a href="/#/" style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+            borderRadius: 8, color: "#AAA", fontSize: 12, textDecoration: "none",
+          }}>🌐 Ver catálogo</a>
+          <button onClick={signOut} style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+            borderRadius: 8, color: "#A32D2D", fontSize: 12, border: "none",
+            background: "transparent", cursor: "pointer", textAlign: "left",
+          }}>🚪 Cerrar sesión</button>
+        </div>
       </div>
 
-      {/* Contenido */}
       <div style={{ flex: 1, padding: "28px 32px", overflowY: "auto" }}>
         {page === "products" && <ProductsSection />}
         {page === "orders"   && <OrdersSection />}
@@ -614,47 +599,61 @@ function AdminApp() {
   );
 }
 
-// ─── Login ────────────────────────────────────────────────────────────────
-// ⚠️  ANTES DE LANZAR: cambiá las credenciales hardcodeadas aquí
-//     o mejor: implementá autenticación real con Supabase Auth
-const ADMIN_USER = "admin";
-const ADMIN_PASS = "calzado2025"; // ← cambiá esto
-
 export default function Admin() {
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [form, setForm] = useState({ user: "", pass: "" });
-  const [error, setError] = useState(false);
+  const { user, signIn, loading } = useApp();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [logging, setLogging] = useState(false);
 
-  function handleLogin() {
-    if (form.user === ADMIN_USER && form.pass === ADMIN_PASS) {
-      setLoggedIn(true);
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
+  async function handleLogin(e) {
+    e.preventDefault();
+    setLogging(true);
+    setError("");
+    try {
+      await signIn(email, password);
+    } catch (err) {
+      setError("Credenciales incorrectas");
+    } finally {
+      setLogging(false);
     }
   }
 
-  if (!loggedIn) return (
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F4F4F4", fontFamily: "system-ui, sans-serif" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>✨</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#666" }}>Cargando...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
       background: "#F4F4F4", fontFamily: "system-ui, sans-serif",
     }}>
       <div style={{ background: "#fff", borderRadius: 20, padding: 32, width: 340, boxShadow: "0 4px 40px rgba(0,0,0,0.1)" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 38, marginBottom: 8 }}>👟</div>
+          <div style={{
+            width: 48, height: 48, borderRadius: 14, background: "#1a1a1a",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontSize: 20, fontWeight: 800, margin: "0 auto 12px",
+          }}>V</div>
           <div style={{ fontSize: 17, fontWeight: 800 }}>Panel Admin</div>
-          <div style={{ fontSize: 12, color: "#AAA" }}>Calzado Mayorista</div>
+          <div style={{ fontSize: 12, color: "#AAA" }}>Vexa Catálogo Mayorista</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Input label="Usuario" value={form.user} onChange={e => setForm(f => ({ ...f, user: e.target.value }))} placeholder="Usuario" />
-          <Input label="Contraseña" type="password" value={form.pass}
-            onChange={e => setForm(f => ({ ...f, pass: e.target.value }))}
-            onKeyDown={e => e.key === "Enter" && handleLogin()}
-            placeholder="••••••••"
-          />
-          {error && <div style={{ fontSize: 12, color: "#A32D2D", textAlign: "center" }}>Usuario o contraseña incorrectos</div>}
-          <Btn style={{ width: "100%", justifyContent: "center", marginTop: 4 }} onClick={handleLogin}>Ingresar →</Btn>
-        </div>
+        <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@vexa.com" required />
+          <Input label="Contraseña" type="password" value={password}
+            onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+          {error && <div style={{ fontSize: 12, color: "#A32D2D", textAlign: "center" }}>{error}</div>}
+          <Btn style={{ width: "100%", justifyContent: "center", marginTop: 4 }} disabled={logging}>
+            {logging ? "Ingresando..." : "Ingresar →"}
+          </Btn>
+        </form>
       </div>
     </div>
   );
